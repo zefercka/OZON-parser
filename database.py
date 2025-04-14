@@ -8,7 +8,7 @@ Base = declarative_base()
 
 
 class Item(Base):
-    __tablename__ = "education_seller"
+    __tablename__ = "item"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
@@ -30,6 +30,7 @@ class Item(Base):
     seller_id: Mapped[int] = mapped_column(
         ForeignKey("seller.id")
     )
+    days_to_deliver: Mapped[int]
     
     seller = relationship("Seller", back_populates="items")
     
@@ -52,7 +53,11 @@ class Item(Base):
             "subject": self.subject,
             "original_name": self.original_name,
             "author": self.author,
-            "seller_id": self.seller_id
+            "seller_id": self.seller_id,
+            "seller_reg_date": self.seller.reg_date,
+            "seller_orders": self.seller.orders,
+            "seller_avg_item_rate": self.seller.avg_item_rate,
+            "seller_region": self.seller.region,
         }
     
 

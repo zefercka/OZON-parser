@@ -1,0 +1,16 @@
+patchright==1.49.1
+wheel
+setuptools
+sqlalchemy
+requests
+pydantic
+scikit-learn
+openai
+numpy
+spacy
+psycopg2
+bs4
+# torch
+# tensorflow
+# transformers
+# accelerate
