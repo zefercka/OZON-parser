@@ -8,6 +8,8 @@ from database import Item, Seller, Session
 from patchright._impl._errors import TimeoutError
 from patchright.sync_api import Page, sync_playwright
 
+from sqlalchemy import and_
+
 base_url = "https://www.ozon.ru"
 base_seller_url = "https://www.ozon.ru/seller"
 
@@ -58,7 +60,7 @@ def split_list_into_n_parts(lst: list, n: int) -> tuple[list, ...]:
     return tuple(parts)
 
 
-def parse_seller(page: Page, seller_id: int) -> dict:
+def get_seller_info(page: Page, seller_id: int) -> dict:
     try:
         page.goto(f"{base_seller_url}/{seller_id}/products")
     except TimeoutError:
@@ -68,9 +70,25 @@ def parse_seller(page: Page, seller_id: int) -> dict:
         "id": seller_id
     }
     
-    page.locator(".y9h_20 button.ag90-a0").last.click()
+    try:
+        page\
+            .locator("[data-widget='sellerTransparency']")\
+            .locator("xpath=div[2]/button[last()]")\
+                .click()
+    except:
+        print("no seller transperecy", page.url)
+        return
     
-    work_time_l = page.locator(".b390-a:has-text('Работает с Ozon')").locator(".b390-a5").text_content().lower().split()
+    modal_layout_item = page.locator("[data-widget='modalLayout']")
+    cell_list_item = modal_layout_item\
+        .locator("[data-widget='cellList']")\
+        .locator("xpath=div[1]")
+    
+    work_time_l = cell_list_item\
+        .locator("div:has-text('Работает с Ozon')")\
+            .first\
+        .locator("xpath=div[3]")\
+            .text_content().lower().split()
     
     if "дн" in work_time_l[1]:
         work_time = timedelta(days=int(work_time_l[0]))
@@ -81,24 +99,12 @@ def parse_seller(page: Page, seller_id: int) -> dict:
     
     data["reg_date"] = datetime.now() - work_time
     
-    seller_info = page.locator(".bq020-a:has-text('Работает согласно графику Ozon')").locator("xpath=..").locator(".bq020-a").first.text_content()
-    seller_info = seller_info.split()
-    
-    org_type = seller_info[0]
-    
-    if org_type.lower() == "ип":
-        id = re.sub(r"\D", '', seller_info[-1])
-        print(id)
-        seller_info = qwen_integration.get_ip_info(id)
-    else:
-        seller_info = " ".join(seller_info)
-    
-    data["region"] = seller_info
-        
-    
-    orders_count_div = page.locator(".b390-a:has-text('Заказов')").locator(".b390-a5")
+    orders_count_div = cell_list_item\
+        .locator("div:has-text('Заказов')")\
+            .first\
+        .locator("xpath=div[3]")
     if orders_count_div.count() > 0:
-        orders_count = orders_count_div.first.text_content().split()
+        orders_count = orders_count_div.first.text_content().lower().split()
         orders_count[0] = orders_count[0].replace(',', '.')
 
         if len(orders_count) > 1:
@@ -111,17 +117,193 @@ def parse_seller(page: Page, seller_id: int) -> dict:
         else:
             orders_count = float(orders_count[0])
         
-        print(seller_id)
-        print(orders_count)
         data["orders"] = int(orders_count)
     
-    avg_rate_div = page.locator(".b390-a:has-text('Средняя оценка товаров')").locator(".b390-a5")
+    avg_rate_div = cell_list_item\
+        .locator("div:has-text('Средняя оценка товаров')")\
+            .first\
+        .locator("xpath=div[3]")
     if avg_rate_div.count() > 0:
         avg_rate = avg_rate_div.first.text_content().split()[0].replace(',', '.')
         data["avg_item_rate"] = float(avg_rate)
     
+    
+    seller_info = modal_layout_item.locator(
+        "[data-widget='textBlock']"
+    ).last.locator(
+        "xpath=div[1]/div[1]/div[1]"
+    ).text_content()
+        
+    if seller_info.split()[0].lower() == "ип":
+        id = re.sub(r"\D", '', seller_info.split()[-1])
+        seller_info = qwen_integration.get_ip_info(id)
+    
+    data["region"] = seller_info
+    
     return data
-     
+
+
+def get_seller_id(page: Page) -> int | None:
+    try:
+        is_ozon_1 = page\
+            .locator("[data-widget='webCurrentSeller']")\
+            .locator("div:has-text('Продавец')")\
+            .last\
+            .locator("xpath=..")\
+            .locator("div:has-text('Ozon')")\
+            .count() > 0
+
+        is_ozon_2 = page\
+            .locator("[data-widget='webCurrentSeller']")\
+            .locator("span:has-text('Магазин')")\
+            .locator("xpath=../div[1]")\
+            .locator("span:has-text('Ozon')")\
+            .count() > 0
+
+        if is_ozon_1 or is_ozon_2:
+            return None
+        
+        seller_url = page\
+            .locator("[data-widget='webStickyProducts']")\
+                .first\
+            .locator("a[href*='seller']")\
+                .first.get_attribute("href")
+        
+        if seller_url:
+            seller_id = seller_url.split('/')[2]
+            
+        return int(seller_id)
+    except Exception as err:
+        print("no shop item", page.url)
+        print(err)
+        
+
+def get_description_text(page: Page) -> str:
+    try:
+        page.locator("#section-description").first.scroll_into_view_if_needed()
+        
+        desc = ""
+        for desc_item in page.locator("#section-description").all():
+                desc += desc_item.text_content().lower().strip("описание").strip("автор на обложке") + ' '
+        
+        return desc
+    except TimeoutError:
+        page.locator("footer").scroll_into_view_if_needed()
+        return ''
+
+
+def get_product_information(page: Page) -> dict:
+    data = {}
+    
+    year_item = page.locator("dt:has-text('Год выпуска')")
+    if year_item.count() > 0:
+        data["year"] = int(year_item.locator("xpath=../dd").text_content())
+        
+    paper_type_item = page.locator("dt:has-text('Тип бумаги в книге')")
+    if paper_type_item.count() > 0:
+        data["paper_type"] = paper_type_item.first.locator("xpath=../dd").text_content()
+        
+    preview_type_item = page.locator("dt:has-text('Тип обложки')")
+    if preview_type_item.count() > 0:
+        data["preview_type"] = preview_type_item.first.locator("xpath=../dd").text_content()
+        
+    book_type_item = page.locator("dt:has-text('Тип книги')")
+    if book_type_item.count() > 0:
+        data["book_type"] = book_type_item.first.locator("xpath=../dd").text_content()
+        
+    pages_count_item = page.locator("dt:has-text('Количество страниц')")
+    if pages_count_item.count() > 0:
+        data["pages_count"] = int(
+            pages_count_item.first.locator("xpath=../dd").text_content()
+        )
+        
+    isbn_item = page.locator("dt:has-text('ISBN')")
+    if isbn_item.count() > 0:
+        isbns = isbn_item.first.locator("xpath=../dd").text_content().split(",")
+        isbns = [i.replace('-', '').strip() for i in isbns]
+        data["isbn"] = isbns
+        
+    class_item = page.locator("dt:has-text('Класс')")
+    if class_item.count() > 0:
+        data["class_"] = int(
+            re.sub(
+                r"\D", '', class_item.first.locator("xpath=../dd").text_content()
+            )
+        )
+    
+    subject_item = page.locator("dt:has-text('Предмет обучения')")
+    if subject_item.count() > 0:
+        data["subject"] = subject_item.locator("xpath=../dd").text_content()
+        
+    original_name_item = page.locator("dt:has-text('Оригинальное название')")
+    if original_name_item.count() > 0:
+        data["original_name"] = original_name_item.locator("xpath=../dd").text_content()
+        
+    author_item = page.locator("dt:has-text('Автор')")
+    if author_item.count() > 0:
+        authors = author_item.locator("xpath=../dd").text_content().split(",")
+        authors = [i.strip() for i in authors]
+        data["author"] = authors
+    
+    return data
+
+
+def get_days_to_deliver(page: Page) -> int:
+    try:
+        Event().wait(0.5)
+        
+        deliver_date_text = page.locator(
+            "[data-widget='webAddToCart']"
+        ).first.locator(
+            "xpath=div[1]/div[1]/div[1]"
+        ).locator("span").first.text_content().lower()
+        
+        date = re.sub(r"(доставим|после|доставка|с)\s*|[.,!?;]", '', deliver_date_text)
+        
+        if "личный кабинет" in date:
+            days_to_deliver = -1
+        elif date == "завтра":
+            days_to_deliver = 1
+        elif date == "послезавтра":
+            days_to_deliver = 2
+        else:
+            date = date.split()
+            
+            month = months.get(date[1])
+            day = int(date[0])
+            year = datetime.now().year
+            date_obj = datetime(year=year, month=month, day=day)
+            
+            days_to_deliver = (date_obj - datetime.now()).days + 1
+        
+        return days_to_deliver
+    except Exception as err:
+        print("No deliver date", page.url)
+        print(err)
+
+
+def get_warehouse_type(page: Page) -> str:
+    try:
+        warehouse_type_item = page.locator(
+            "h2:has-text('Информация о доставке')"
+        ).locator(
+            "xpath=../div[1]/div[1]/button[1]/span[1]/div[1]/span[1]/span[2]"
+        )
+        
+        if warehouse_type_item.count() > 0:
+            warehouse_type_text = warehouse_type_item.text_content().lower()
+        else:
+            warehouse_type_text = "fbs"
+        
+        if "ozon" in warehouse_type_text:
+            return "ozon"
+        else:
+            return "fbs"
+
+    except Exception as err:
+        print("can't get warehouse type", page.url)
+        print(err)
+
 
 # Parser       
 def parser(items: list[Item], user_dir_path: str = "./data_0"):                                      
@@ -134,9 +316,15 @@ def parser(items: list[Item], user_dir_path: str = "./data_0"):
         
         page = browser.new_page()
         
+        # seller_id = 52057
+        # print(get_seller_info(page, seller_id))
+        
+        # browser.close()
+        
+        # return
+
         for item in items:
             url = item.url
-            # print(url)
             
             try:
                 page.goto(f"{base_url}{url}")
@@ -146,17 +334,15 @@ def parser(items: list[Item], user_dir_path: str = "./data_0"):
             while "OZON" not in page.title():
                 Event().wait(0.5)
                 
-            
             product_is_over = page.locator("h2:has-text('Этот товар закончился')").count()
-            if product_is_over != 0:
-                continue
-        
             product_is_deleted = page.locator("h2:has-text('Такой страницы не существует')").count()
-            if product_is_deleted != 0:
-                continue
-            
             product_is_unavailable = page.locator("h2:has-text('Товар не доставляется в ваш регион')").count()
-            if product_is_unavailable != 0:
+            
+            if product_is_deleted or product_is_over or product_is_unavailable:
+                with Session() as session:
+                    session.query(Item).filter(Item.url == url).update({"available": False})
+                    session.commit()
+                
                 continue
             
             data = {}
@@ -164,136 +350,46 @@ def parser(items: list[Item], user_dir_path: str = "./data_0"):
                 "url": url
             }
             
-            # try:
-            #     page.locator("#section-description").first.scroll_into_view_if_needed()
-                
-            #     desc = ""
-            #     for desc_item in page.locator("#section-description").all():
-            #         if desc_item.locator(".RA-a1").count() > 0:
-            #             desc += desc_item.locator(".RA-a1").text_content() + ' '
-                
-            #     data["description"] = desc
-            # except TimeoutError:
-            #     page.locator("footer").scroll_into_view_if_needed()
-                
-            # year_item = page.locator("dt:has-text('Год выпуска')")
-            # if year_item.count() > 0:
-            #     data["year"] = int(year_item.locator("xpath=../dd").text_content())
-                
-            # paper_type_item = page.locator("dt:has-text('Тип бумаги в книге')")
-            # if paper_type_item.count() > 0:
-            #     data["paper_type"] = paper_type_item.locator("xpath=../dd").text_content()
-                
-            # preview_type_item = page.locator("dt:has-text('Тип обложки')")
-            # if preview_type_item.count() > 0:
-            #     data["preview_type"] = preview_type_item.locator("xpath=../dd").text_content()
-                
-            # book_type_item = page.locator("dt:has-text('Тип книги')")
-            # if book_type_item.count() > 0:
-            #     data["book_type"] = book_type_item.locator("xpath=../dd").text_content()
-                
-            # pages_count_item = page.locator("dt:has-text('Количество страниц')")
-            # if pages_count_item.count() > 0:
-            #     data["pages_count"] = int(pages_count_item.locator("xpath=../dd").text_content())
-                
-            # isbn_item = page.locator("dt:has-text('ISBN')")
-            # if isbn_item.count() > 0:
-            #     isbns = isbn_item.locator("xpath=../dd").text_content().split(", ")
-            #     isbns = [i.replace('-', '') for i in isbns]
-            #     data["isbn"] = isbns
-                
-            # class_item = page.locator("dt:has-text('Класс')")
-            # if class_item.count() > 0:
-            #     data["class_"] = int(class_item.locator("xpath=../dd").text_content().split()[0])
+            data["description"] = get_description_text(page)
             
-            # subject_item = page.locator("dt:has-text('Предмет обучения')")
-            # if subject_item.count() > 0:
-            #     data["subject"] = subject_item.locator("xpath=../dd").text_content()
-                
-            # original_name_item = page.locator("dt:has-text('Оригинальное название')")
-            # if original_name_item.count() > 0:
-            #     data["original_name"] = original_name_item.locator("xpath=../dd").text_content()
-                
-            # author_item = page.locator("dt:has-text('Автор')")
-            # if author_item.count() > 0:
-            #     authors = author_item.locator("xpath=../dd").text_content().split(", ")
-            #     data["author"] = authors
+            data.update(get_product_information(page))
             
-            try:
-                Event().wait(0.5)
-                
-                deliver_date_text = page.locator("span:has-text('Завтра')")
-                if page.locator("span:has-text('Завтра')").count() > 0:
-                    deliver_date_text = deliver_date_text.first.text_content().lower()          
-                else:
-                    deliver_date_text = page.locator("span:has-text('Доставим')").first.text_content().lower()
-                
-                date = deliver_date_text.replace("доставим", '').replace('с', '').replace("завтра,", '').replace("поле", '').strip()
-                
-                print("---------")
-                print(date)
-                print("---------")
-                if date in ["завтра", "завтра,"]:
-                    days_to_deliver = 1
-                elif date in ["послезавтра", "послезавтра,"]:
-                    days_to_deliver = 2
-                else:
-                    date = date.split()
-                    
-                    month = months.get(date[1])
-                    day = int(date[0])
-                    year = datetime.now().year
-                    date_obj = datetime(year=year, month=month, day=day)
-                    
-                    days_to_deliver = (date_obj - datetime.now()).days + 1
-                
-                data["days_to_deliver"] = days_to_deliver
-            except Exception as err:
-                print(err)
-                print("No deliver date")
-                
-            try:
-                seller_url = page.locator(".k0p_28").first.get_attribute("href")
-                seller_id = seller_url.split('/')[2]
-                
-                data["seller_id"] = int(seller_id)
-                
-            except Exception as err:
-                print("no shop item")
-                print(err)
-                
-            print(data)
+            seller_id = get_seller_id(page)
+            if seller_id:
+                data["seller_id"] = seller_id
+
+            data["days_to_deliver"] = get_days_to_deliver(page)
+            
+            data["warehouse_type"] = get_warehouse_type(page)
+            
             
             if "seller_id" in data:
                 with Session() as session:
                     seller = session.query(Seller).filter(Seller.id == data["seller_id"]).first()
                     
                 if seller is None:
-                    seller_info = parse_seller(page, seller_id)
+                    seller_info = get_seller_info(page, data["seller_id"])
                     with Session() as session:
                         session.add(Seller(
                             **seller_info
                         ))
                         session.commit()
-                        
-                if "url" in data:
-                    # print(data)
-                    with Session() as session:
-                        session.query(Item).filter(Item.url == url).update(data)
-                        session.commit()
             else:
                 print(f"no seller info for url {url}")
+            
+            if "url" in data:
+                with Session() as session:
+                    session.query(Item).filter(Item.url == url).update(data)
+                    session.commit()
             
         browser.close()
       
       
 with Session() as session:
     # items = session.query(Item).filter(Item.description == None).all()
-    items = session.query(Item).filter(Item.days_to_deliver == None).all()
+    items = session.query(Item).filter(and_(Item.warehouse_type == None, Item.available == True)).all()
 
 count = len(items)
-
-# parser(urls, "data_0")
 
 # items = [session.query(Item).fi
 # items[0].url = "/product/angliyskiy-yazyk-uchebnoe-posobie-dlya-nachinayushchih-2014437467/?at=ywtAO9jp0hgzongVHVOqnv5IRwpArgcXlVAWEcyAMrq"
@@ -303,23 +399,19 @@ count = len(items)
 # 8aab1a1a-ef05-4392-968d-1e2d29e7bb07 
 # b76ed641-c5f5-4fc7-bdb8-d17e5091f789
 # 162c2378-6bb9-4df3-a188-c126f8a9218d
+# f66be52c-615f-4b60-9291-383dafa6ecb1
 
 threads: list[Thread] = []
-threads_count = 4
+threads_count = 1
 split_threads = split_list_into_n_parts(items, threads_count)
 for i, items_to_thread in enumerate(split_threads):
     print(len(items_to_thread))
     
-    user_dir_path = f"./data_{i}"
+    # user_dir_path = f"./data_{i}"
+    user_dir_path = "data_4"
     t = Thread(target=parser, args=(items_to_thread, user_dir_path))
     threads.append(t)
     t.start()
 
 for i in threads:
     i.join()
-
-    
-# parser([
-#     "/product/matematika-proverochnye-raboty-2-klass-fgos-shkola-rossii-volkova-svetlana-ivanovna-1218537971/?_bctx=CAQQkdMM&at=Rlty4gOJWcOPO02EcDNNrANh1j11vDcBOj9ZkulvzyAM&hs=1"
-#     # "/product/russkiy-yazyk-7-klass-uchebnik-chast-2-baranov-m-ladyzhenskaya-taisa-alekseevna-584734710/?_bctx=CAQQ"
-# ])

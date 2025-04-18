@@ -31,6 +31,8 @@ class Item(Base):
         ForeignKey("seller.id")
     )
     days_to_deliver: Mapped[int]
+    warehouse_type: Mapped[str] = mapped_column(String(4))
+    available: Mapped[bool]
     
     seller = relationship("Seller", back_populates="items")
     
@@ -53,6 +55,8 @@ class Item(Base):
             "subject": self.subject,
             "original_name": self.original_name,
             "author": self.author,
+            "warehouse_type": self.warehouse_type,
+            "available": self.available,
             "seller_id": self.seller_id,
             "seller_reg_date": self.seller.reg_date,
             "seller_orders": self.seller.orders,
