@@ -230,6 +230,9 @@ def get_product_information(page: Page) -> dict:
                 r"\D", '', class_item.first.locator("xpath=../dd").text_content()
             )
         )
+        
+        if data["class_"] == 1234567891011:
+            data["class_"] = None
     
     subject_item = page.locator("dt:has-text('Предмет обучения')")
     if subject_item.count() > 0:
@@ -378,22 +381,19 @@ def parser(items: list[Item], user_dir_path: str = "./data_0"):
                 print(f"no seller info for url {url}")
             
             if "url" in data:
-                with Session() as session:
-                    session.query(Item).filter(Item.url == url).update(data)
-                    session.commit()
+                try:
+                    with Session() as session:
+                        session.query(Item).filter(Item.url == url).update(data)
+                        session.commit()
+                except Exception as err:
+                    print(err)
             
         browser.close()
       
       
 with Session() as session:
     # items = session.query(Item).filter(Item.description == None).all()
-    items = session.query(Item).filter(and_(Item.warehouse_type == None, Item.available == True)).all()
-
-count = len(items)
-
-# items = [session.query(Item).fi
-# items[0].url = "/product/angliyskiy-yazyk-uchebnoe-posobie-dlya-nachinayushchih-2014437467/?at=ywtAO9jp0hgzongVHVOqnv5IRwpArgcXlVAWEcyAMrq"
-# items[0].url = "/product/okruzhayushchiy-mir-2-klass-rabochie-tetradi-k-novomu-fp-komplekt-iz-2-h-chastey-fgos-pleshakov-922338721/"
+    items = session.query(Item).filter(and_(Item.seller_id == None, Item.available == True)).all()
 
 # 3e3caeca-ea35-4615-a6c6-d7cad48d663b
 # 8aab1a1a-ef05-4392-968d-1e2d29e7bb07 
@@ -402,13 +402,13 @@ count = len(items)
 # f66be52c-615f-4b60-9291-383dafa6ecb1
 
 threads: list[Thread] = []
-threads_count = 1
+threads_count = 6
 split_threads = split_list_into_n_parts(items, threads_count)
 for i, items_to_thread in enumerate(split_threads):
     print(len(items_to_thread))
     
-    # user_dir_path = f"./data_{i}"
-    user_dir_path = "data_4"
+    user_dir_path = f"./data_{i}"
+    # user_dir_path = "data_4"
     t = Thread(target=parser, args=(items_to_thread, user_dir_path))
     threads.append(t)
     t.start()

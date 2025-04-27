@@ -32,7 +32,7 @@ class Item(Base):
     )
     days_to_deliver: Mapped[int]
     warehouse_type: Mapped[str] = mapped_column(String(4))
-    available: Mapped[bool]
+    available: Mapped[bool] = mapped_column(default=True)
     
     seller = relationship("Seller", back_populates="items")
     

@@ -59,31 +59,31 @@ def get_ip_info(ip: str) -> str:
         return None
 
 
-def get_city(info: str) -> str:
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key="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",
-    )
+# def get_city(info: str) -> str:
+#     client = OpenAI(
+#         base_url="https://openrouter.ai/api/v1",
+#         api_key="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",
+#     )
     
-    print(info)
+#     print(info)
 
-    try:
-        completion = client.chat.completions.create(
-            model="qwen/qwen2.5-vl-32b-instruct:free",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "В каком городе зарегистрированно предприятие? В ответ отправь одно слово - город \n\n" + info
-                        }
-                    ]
-                }
-            ]
-        )
-        print(completion)
-    except Exception as err:
-        print(err)
+#     try:
+#         completion = client.chat.completions.create(
+#             model="qwen/qwen2.5-vl-32b-instruct:free",
+#             messages=[
+#                 {
+#                     "role": "user",
+#                     "content": [
+#                         {
+#                             "type": "text",
+#                             "text": "В каком городе зарегистрированно предприятие? В ответ отправь одно слово - город \n\n" + info
+#                         }
+#                     ]
+#                 }
+#             ]
+#         )
+#         print(completion)
+#     except Exception as err:
+#         print(err)
     
-    return completion.choices[0].message.content
+#     return completion.choices[0].message.content
