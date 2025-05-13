@@ -8,3 +8,4 @@ __pycache__/
 logs/
 test.csv
 train.csv
+*.env

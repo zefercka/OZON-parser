@@ -66,7 +66,7 @@ class Item(Base):
     
 
 class Seller(Base):
-    __tablename__ = "seller"
+    __tablename__ = "ozon_seller"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     reg_date: Mapped[datetime]
