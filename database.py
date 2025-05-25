@@ -28,7 +28,7 @@ class Item(Base):
     original_name: Mapped[str]
     author: Mapped[list[str]] = mapped_column(ARRAY(String))
     seller_id: Mapped[int] = mapped_column(
-        ForeignKey("seller.id")
+        ForeignKey("ozon_seller.id")
     )
     days_to_deliver: Mapped[int]
     warehouse_type: Mapped[str] = mapped_column(String(4))

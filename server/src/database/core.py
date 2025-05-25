@@ -13,12 +13,24 @@ engine = create_async_engine(
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
-    pass
+    
+    def dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 async def get_db():
     async with SessionLocal() as session:
-        yield session
+        try:
+            transaction = session.begin()
+            await transaction.start()
+            yield session
+            await transaction.commit()
+        except Exception as err:
+            await transaction.rollback()
+            raise err
+        finally:
+            await session.close()
+            
         
 
 AsyncDbSession = Annotated[AsyncSession, Depends(get_db)]
