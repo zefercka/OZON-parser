@@ -18,3 +18,4 @@ class OzonItem(BaseModel):
     image: str
     authors: Optional[list[str]]
     is_fake: bool
+    description: Optional[str]

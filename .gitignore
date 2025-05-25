@@ -9,4 +9,5 @@ logs/
 test.csv
 train.csv
 *.env
-model.safetensors
+saved_model/model.safetensors
+results/*

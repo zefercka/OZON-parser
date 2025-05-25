@@ -4,23 +4,27 @@ import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.src.ai.preprocessing import Model
-from server.src.dependency.exceptions import ItemNotFound
+from server.src.dependency.exceptions import ItemNotFound, UnknownUrlTypeError
 from server.src.ozon.dependency import get_id_from_url
 from server.src.ozon.ozon_item_parser import parser
 from server.src.ozon.repository import OzonItemRepository
 from server.src.ozon.schema import CheckUrl, Feedback, OzonItem
 
 preprocessing_model = Model()
+URL_PATTERN = r"^https://www\.ozon\.ru/product/[a-zA-Z0-9\-]+-\d+/?(?:\?[\w=&]*)?$"
+
 
 async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
     url: str = url.url
+    
+    if not re.match(URL_PATTERN, url):
+        raise UnknownUrlTypeError
+    
     url = url.split("?")[0]
     url = re.sub("https://", '', url)
     url = re.sub("www.ozon.ru", '', url)
     
     id_ = get_id_from_url(url)
-    
-    print(len(str(id_)))
     
     item = await OzonItemRepository.find_one_or_none(session, id=id_)
     
@@ -34,6 +38,7 @@ async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
                 "image": item.image,
                 "authors": item.author,
                 "is_fake": item.is_fake_model,
+                "description": item.description,
             }
         )
         
@@ -60,6 +65,7 @@ async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
             "image": data["image"],
             "authors": data["author"],
             "is_fake": data["is_fake_model"],
+            "description": data["description"],
         }
     )
     

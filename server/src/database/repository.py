@@ -23,6 +23,5 @@ class BaseRepository(Generic[T]):
     @classmethod
     async def update(cls, session: AsyncSession, id: int, **data) -> None:
         query = update(cls.model).where(cls.model.id == id).values(**data)
-        print(query)
         await session.execute(query)
         
