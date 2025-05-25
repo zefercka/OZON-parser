@@ -28,7 +28,7 @@ class TrueItem(Base):
     original_name: Mapped[str]
     author: Mapped[list[str]] = mapped_column(ARRAY(String))
     seller_id: Mapped[int] = mapped_column(
-        ForeignKey("seller.id")
+        ForeignKey("ozon_seller.id")
     )
     days_to_deliver: Mapped[int]
     warehouse_type: Mapped[str] = mapped_column(String(4))
@@ -84,7 +84,7 @@ class Item(Base):
     original_name: Mapped[str]
     author: Mapped[list[str]] = mapped_column(ARRAY(String))
     seller_id: Mapped[int] = mapped_column(
-        ForeignKey("seller.id")
+        ForeignKey("ozon_seller.id")
     )
     days_to_deliver: Mapped[int]
     warehouse_type: Mapped[str] = mapped_column(String(4))
@@ -120,7 +120,7 @@ class Item(Base):
     
 
 class Seller(Base):
-    __tablename__ = "seller"
+    __tablename__ = "ozon_seller"
     
     id: Mapped[int] = mapped_column(primary_key=True)
     reg_date: Mapped[datetime]
