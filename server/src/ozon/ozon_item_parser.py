@@ -190,7 +190,9 @@ async def get_description_text(page: Page) -> str:
         
         desc = ""
         for desc_item in await page.locator("#section-description").all():
-                desc += (await desc_item.text_content()).lower().strip("описание").strip("автор на обложке") + ' '
+                desc += (await desc_item.text_content()) + '\n'
+        
+        desc = desc.strip("Описание").strip("\n")
         
         return desc
     except TimeoutError:
@@ -204,7 +206,7 @@ async def get_product_information(page: Page) -> dict:
     title_item = page.locator("h1")
     if await title_item.count() > 0:
         data["title"] = await title_item.text_content()
-        data["title"] = data["title"].lower().replace('\n', '').strip()
+        data["title"] = data["title"].replace('\n', '').strip()
         
     price_item = page.locator("[data-widget='webPrice']").locator(
         "xpath=div[1]/div[1]"
@@ -365,8 +367,6 @@ async def parser(session: AsyncSession, url: str, user_dir_path: str = "./data_0
             "id": id_,
             "url": url,
         }
-        
-        data["description"] = await get_description_text(page)
         
         data.update(await get_product_information(page))
         
