@@ -11,17 +11,18 @@ from server.src.ozon.repository import OzonItemRepository
 from server.src.ozon.schema import CheckUrl, Feedback, OzonItem
 
 preprocessing_model = Model()
-URL_PATTERN = r"^https://www\.ozon\.ru/product/[a-zA-Z0-9\-]+-\d+/?(?:\?[\w=&]*)?$"
+URL_PATTERN = r"^www\.ozon\.ru/product/[a-zA-Z0-9\-]+-\d+/*"
 
 
 async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
     url: str = url.url
+    url = re.sub("https://", '', url)
     
+    print(url)
     if not re.match(URL_PATTERN, url):
         raise UnknownUrlTypeError
     
     url = url.split("?")[0]
-    url = re.sub("https://", '', url)
     url = re.sub("www.ozon.ru", '', url)
     
     id_ = get_id_from_url(url)
@@ -36,9 +37,9 @@ async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
                 "url": f"www.ozon.ru{item.url}",
                 "price": item.price,
                 "image": item.image,
-                "authors": item.author,
+                "authors": item.author if item.author else [""],
                 "is_fake": item.is_fake_model,
-                "description": item.description,
+                "description": item.description if item.description else "",
             }
         )
         
@@ -63,9 +64,9 @@ async def check_item_by_url(session: AsyncSession, url: CheckUrl) -> bool:
             "url": f"www.ozon.ru{data["url"]}",
             "price": data["price"],
             "image": data["image"],
-            "authors": data["author"],
+            "authors": data["author"] if "author" in data else [""],
             "is_fake": data["is_fake_model"],
-            "description": data["description"],
+            "description": data["description"] if "description" in data else "",
         }
     )
     
